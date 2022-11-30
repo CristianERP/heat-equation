@@ -3,6 +3,7 @@
 #include <ctime>
 #include <cstdlib>
 #include <cstring>
+#include "mpi.h"
 
 using namespace std;
 
@@ -30,9 +31,9 @@ void imprimirMatriz(double *elem, int n, int m)
 
 int main(int argc, char *argv[])
 {
+  int rank, size;
   int n = atoi(argv[1]) * atoi(argv[1]); // número de filas
   int m = atoi(argv[2]);                 // número de columnas
-  // lo escribo así porque después mejoraré el código
 
   // Variables para manejar los tiempos
   double t0, t1;
@@ -78,30 +79,65 @@ int main(int argc, char *argv[])
     U.elementos[t * m + (m - 1)] = UbordeFinal;
   }
   cout << endl;
-  // imprimirMatriz(U.elementos, n, m);
-  //  copia a GPU
-  //  ciclo principal en cpu
-  cout << "CPU:" << endl;
-  t0 = clock();
-  int t, i;
 
-  for (t = 0; t < n - 1; t++)
+  // //  ciclo principal en cpu
+  // cout << "CPU:" << endl;
+  // t0 = clock();
+  // int t, i;
+
+  // for (t = 0; t < n - 1; t++)
+  // {
+  //   for (i = 1; i < m - 1; i++)
+  //   {
+  //     // ecuación principal.
+  //     U.elementos[(t + 1) * m + i] = U.elementos[t * m + i] + C * (U.elementos[t * m + (i + 1)] - 2 * U.elementos[t * m + i] + U.elementos[t * m + (i - 1)]);
+  //   }
+  //   cout << "Paso de tiempo " << t << endl;
+  //   // cout << ".";
+  //   imprimirMatriz(U.elementos, n, m);
+  // }
+
+  // t1 = clock();
+  // double time = (double(t1 - t0) / CLOCKS_PER_SEC);
+  // cout << '\n'
+  //      << "El tiempo en CPU es: " << time << " El tiempo en CPU con";
+  // cout << endl;
+ 
+  MPI_Init(&argc, &argv);
+  MPI_Comm_size(MPI_COMM_WORLD, &size); // Obtenemos el numero de procesos en el comunicador global
+  MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+  MPI_Status status;
+  
+  int startVal = 1000 * rank / size + 1;
+  int endVal = 1000 * (rank + 1)/size;
+ 
+
+  for (int t = 0; t < n - 1; t++)
   {
-    for (i = 1; i < m - 1; i++)
+    for (int i = startVal; i < endVal - 1; i++)
     {
       // ecuación principal.
       U.elementos[(t + 1) * m + i] = U.elementos[t * m + i] + C * (U.elementos[t * m + (i + 1)] - 2 * U.elementos[t * m + i] + U.elementos[t * m + (i - 1)]);
+     
     }
     cout << "Paso de tiempo " << t << endl;
     // cout << ".";
-    imprimirMatriz(U.elementos, n, m);
+    //imprimirMatriz(U.elementos, n, m);
+    if (rank == 0){
+        MPI_Recv(&U.elementos, 1, MPI_INT, MPI_ANY_SOURCE, MPI_ANY_TAG, MPI_COMM_WORLD, &status);
+        int k = sizeof(V.elementos) / sizeof(*V.elementos);
+        int p = sizeof(U.elementos) / sizeof(*U.elementos);
+        int result[k + p];
+        std::copy(V.elementos, V.elementos + k, result);
+        std::copy(U.elementos, U.elementos + p, result + k);
+    }
+    else{
+      cout << "RANK -> " << rank << endl;
+      MPI_Send(&U.elementos, 1, MPI_INT, MPI_ANY_SOURCE, MPI_ANY_TAG, MPI_COMM_WORLD);
+    }
+    U.elementos = V.elementos;
   }
-
-  t1 = clock();
-  double time = (double(t1 - t0) / CLOCKS_PER_SEC);
-  cout << '\n'
-       << "El tiempo en CPU es: " << time << " El tiempo en CPU con";
-  cout << endl;
+  MPI_Finalize();
 }
 
 double Uinicial(int i)
